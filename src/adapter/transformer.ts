@@ -3,6 +3,7 @@ import type { UniversalEnvelope, ProductSnapshot } from "../schema/universal.js"
 import type { TokenMeta } from "./client.js";
 import type { KeepaProduct } from "../schema/keepa.js";
 import { getLatestCsvValue } from "./keepa-csv.js";
+import { dateToKeepaTime } from "./keepa-time.js";
 
 // --- Envelope builders ---
 
@@ -127,6 +128,12 @@ export function transformBuyBox(raw: KeepaProduct) {
   const buyBoxHistory = raw.buyBoxSellerIdHistory ?? raw.stats?.buyBoxSellerIdHistory ?? [];
   const csv = raw.csv ?? [];
 
+  // Only include offers seen in the last 24 hours
+  const recentThreshold = dateToKeepaTime(new Date(Date.now() - 24 * 60 * 60_000));
+  const activeOffers = (raw.offers ?? []).filter(
+    (o) => o.lastSeen != null && o.lastSeen >= recentThreshold
+  );
+
   return {
     asin: raw.asin,
     current_seller_id: buyBoxHistory.length
@@ -137,7 +144,8 @@ export function transformBuyBox(raw: KeepaProduct) {
         ? true
         : false,
     buy_box_price: getLatestCsvValue(csv[CSV_TYPE.BUY_BOX_SHIPPING], { isPriceCents: true }),
-    offers: (raw.offers ?? []).map((o) => ({
+    total_offers_tracked: (raw.offers ?? []).length,
+    offers: activeOffers.map((o) => ({
       seller_id: o.sellerId ?? null,
       seller_name: o.sellerName ?? null,
       is_fba: o.isFBA ?? null,

@@ -85,6 +85,8 @@ describe("transformer", () => {
 
   describe("transformBuyBox", () => {
     it("extracts buy box info", () => {
+      // lastSeen must be recent (Keepa time = minutes since 2011-01-01)
+      const recentKeepaTime = Math.floor((Date.now() - 1293840000000) / 60000);
       const raw = makeRawProduct({
         offers: [
           {
@@ -94,13 +96,23 @@ describe("transformer", () => {
             isPrime: true,
             isBuyBoxWinner: true,
             condition: 1,
+            lastSeen: recentKeepaTime,
+          },
+          {
+            sellerId: "OLD_SELLER",
+            sellerName: "Gone Inc",
+            isFBA: false,
+            isPrime: false,
+            condition: 1,
+            lastSeen: recentKeepaTime - 60 * 24 * 30, // 30 days ago
           },
         ],
       });
       const bb = transformBuyBox(raw);
       expect(bb.current_seller_id).toBe("ATVPDKIKX0DER");
       expect(bb.is_amazon).toBe(true);
-      expect(bb.offers).toHaveLength(1);
+      expect(bb.total_offers_tracked).toBe(2);
+      expect(bb.offers).toHaveLength(1); // only the recent one
       expect(bb.offers[0].seller_name).toBe("Amazon.com");
     });
   });
