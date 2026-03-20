@@ -1,0 +1,129 @@
+import type { ProductSnapshot, ChangeEvent } from "../schema/universal.js";
+
+export function detectChanges(
+  previous: ProductSnapshot,
+  current: ProductSnapshot
+): ChangeEvent[] {
+  const now = new Date().toISOString();
+  const changes: ChangeEvent[] = [];
+
+  function addChange(
+    field: string,
+    oldVal: unknown,
+    newVal: unknown,
+    severity: "critical" | "warning" | "info"
+  ) {
+    changes.push({
+      asin: current.asin,
+      domain: current.domain,
+      field,
+      old_value: oldVal == null ? null : String(oldVal),
+      new_value: newVal == null ? null : String(newVal),
+      severity,
+      detected_at: now,
+    });
+  }
+
+  // Critical: title changed
+  if (previous.title !== current.title) {
+    addChange("title", previous.title, current.title, "critical");
+  }
+
+  // Critical: buy box seller changed
+  if (previous.buy_box_seller_id !== current.buy_box_seller_id) {
+    addChange(
+      "buy_box_seller_id",
+      previous.buy_box_seller_id,
+      current.buy_box_seller_id,
+      "critical"
+    );
+  }
+
+  // Critical: parent ASIN changed or nulled (orphaned)
+  if (previous.parent_asin !== current.parent_asin) {
+    addChange(
+      "parent_asin",
+      previous.parent_asin,
+      current.parent_asin,
+      "critical"
+    );
+  }
+
+  // Warning: images changed
+  const prevImages = JSON.stringify(previous.images);
+  const currImages = JSON.stringify(current.images);
+  if (prevImages !== currImages) {
+    addChange("images", prevImages, currImages, "warning");
+  }
+
+  // Warning: sales rank worsened >20%
+  if (
+    previous.sales_rank != null &&
+    current.sales_rank != null &&
+    previous.sales_rank > 0
+  ) {
+    const pctChange =
+      ((current.sales_rank - previous.sales_rank) / previous.sales_rank) * 100;
+    if (pctChange > 20) {
+      addChange(
+        "sales_rank",
+        previous.sales_rank,
+        current.sales_rank,
+        "warning"
+      );
+    }
+  }
+
+  // Warning: amazon price changed >10%
+  if (
+    previous.amazon_price != null &&
+    current.amazon_price != null &&
+    previous.amazon_price > 0
+  ) {
+    const pctChange =
+      (Math.abs(current.amazon_price - previous.amazon_price) /
+        previous.amazon_price) *
+      100;
+    if (pctChange > 10) {
+      addChange(
+        "amazon_price",
+        previous.amazon_price,
+        current.amazon_price,
+        "warning"
+      );
+    }
+  }
+
+  // Warning: rating dropped
+  if (
+    previous.rating != null &&
+    current.rating != null &&
+    current.rating < previous.rating
+  ) {
+    addChange("rating", previous.rating, current.rating, "warning");
+  }
+
+  // Info: review count changed
+  if (previous.review_count !== current.review_count) {
+    addChange(
+      "review_count",
+      previous.review_count,
+      current.review_count,
+      "info"
+    );
+  }
+
+  // Info: features changed
+  const prevFeatures = JSON.stringify(previous.features);
+  const currFeatures = JSON.stringify(current.features);
+  if (prevFeatures !== currFeatures) {
+    addChange("features", prevFeatures, currFeatures, "info");
+  }
+
+  // Info: description changed
+  if (previous.description !== current.description) {
+    addChange("description", previous.description, current.description, "info");
+  }
+
+  return changes;
+}
