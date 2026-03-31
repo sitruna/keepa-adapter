@@ -11,12 +11,22 @@ export function insertSnapshot(
       asin, domain, amazon_price, new_price, sales_rank, subcategory_ranks_json,
       rating, review_count, buy_box_seller_id, buy_box_is_amazon, buy_box_price,
       title, images_json, features_json, description,
-      parent_asin, child_asins_json, variation_attributes_json, raw_json
+      parent_asin, child_asins_json, variation_attributes_json,
+      monthly_sold, list_price, offer_count_new, offer_count_used,
+      offer_count_fba, offer_count_fbm,
+      out_of_stock_percentage_30, out_of_stock_percentage_90,
+      is_sns, frequently_bought_together_json,
+      raw_json
     ) VALUES (
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
-      ?, ?, ?, ?
+      ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?,
+      ?, ?,
+      ?, ?,
+      ?
     )
   `);
 
@@ -39,6 +49,16 @@ export function insertSnapshot(
     snapshot.parent_asin,
     JSON.stringify(snapshot.child_asins),
     snapshot.variation_attributes ? JSON.stringify(snapshot.variation_attributes) : null,
+    snapshot.monthly_sold,
+    snapshot.list_price,
+    snapshot.offer_count_new,
+    snapshot.offer_count_used,
+    snapshot.offer_count_fba,
+    snapshot.offer_count_fbm,
+    snapshot.out_of_stock_percentage_30,
+    snapshot.out_of_stock_percentage_90,
+    snapshot.is_sns === null ? null : snapshot.is_sns ? 1 : 0,
+    JSON.stringify(snapshot.frequently_bought_together),
     rawJson ?? null
   );
 
@@ -104,6 +124,22 @@ function rowToSnapshot(row: Record<string, unknown>): ProductSnapshot {
     variation_attributes: safeJsonParse(
       row.variation_attributes_json as string,
       null
+    ),
+    monthly_sold: (row.monthly_sold as number) ?? null,
+    list_price: (row.list_price as number) ?? null,
+    offer_count_new: (row.offer_count_new as number) ?? null,
+    offer_count_used: (row.offer_count_used as number) ?? null,
+    offer_count_fba: (row.offer_count_fba as number) ?? null,
+    offer_count_fbm: (row.offer_count_fbm as number) ?? null,
+    out_of_stock_percentage_30: (row.out_of_stock_percentage_30 as number) ?? null,
+    out_of_stock_percentage_90: (row.out_of_stock_percentage_90 as number) ?? null,
+    is_sns:
+      row.is_sns === null || row.is_sns === undefined
+        ? null
+        : (row.is_sns as number) === 1,
+    frequently_bought_together: safeJsonParse(
+      row.frequently_bought_together_json as string,
+      []
     ),
   };
 }

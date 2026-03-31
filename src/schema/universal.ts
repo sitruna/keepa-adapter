@@ -75,6 +75,16 @@ export const ProductSnapshotSchema = z.object({
   parent_asin: z.string().nullable(),
   child_asins: z.array(z.string()),
   variation_attributes: z.record(z.string(), z.string()).nullable(),
+  monthly_sold: z.number().nullable(),
+  list_price: z.number().nullable(),
+  offer_count_new: z.number().nullable(),
+  offer_count_used: z.number().nullable(),
+  offer_count_fba: z.number().nullable(),
+  offer_count_fbm: z.number().nullable(),
+  out_of_stock_percentage_30: z.number().nullable(),
+  out_of_stock_percentage_90: z.number().nullable(),
+  is_sns: z.boolean().nullable(),
+  frequently_bought_together: z.array(z.string()),
 });
 
 export type ProductSnapshot = z.infer<typeof ProductSnapshotSchema>;

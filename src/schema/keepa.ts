@@ -48,6 +48,28 @@ export const KeepaProductSchema = z
         salesRankDrops30: z.number().nullable().optional(),
         salesRankDrops90: z.number().nullable().optional(),
         salesRankDrops180: z.number().nullable().optional(),
+        buyBoxStats: z
+          .record(
+            z.string(),
+            z
+              .object({
+                percentageWon: z.number().nullable().optional(),
+                avgPrice: z.number().nullable().optional(),
+                avgNewOfferCount: z.number().nullable().optional(),
+                avgUsedOfferCount: z.number().nullable().optional(),
+                isFBA: z.boolean().nullable().optional(),
+                lastSeen: z.number().nullable().optional(),
+              })
+              .passthrough()
+          )
+          .nullable()
+          .optional(),
+        offerCountFBA: z.number().nullable().optional(),
+        offerCountFBM: z.number().nullable().optional(),
+        outOfStockPercentage30: z.array(z.number()).nullable().optional(),
+        outOfStockPercentage90: z.array(z.number()).nullable().optional(),
+        sellerIdsLowestFBA: z.array(z.string()).nullable().optional(),
+        sellerIdsLowestFBM: z.array(z.string()).nullable().optional(),
       })
       .passthrough()
       .nullable()
@@ -81,6 +103,25 @@ export const KeepaProductSchema = z
     salesRankReference: z.number().nullable().optional(),
     salesRankReferenceHistory: z.array(z.number()).nullable().optional(),
     frequentlyBoughtTogether: z.array(z.string()).nullable().optional(),
+    monthlySold: z.number().nullable().optional(),
+    monthlySoldHistory: z.array(z.number()).nullable().optional(),
+    coupon: z.array(z.number()).nullable().optional(),
+    couponHistory: z.array(z.number()).nullable().optional(),
+    promotions: z
+      .array(
+        z
+          .object({
+            type: z.string().nullable().optional(),
+            sellerId: z.string().nullable().optional(),
+            amount: z.number().nullable().optional(),
+            discountPercent: z.number().nullable().optional(),
+            snsBulkDiscountPercent: z.number().nullable().optional(),
+          })
+          .passthrough()
+      )
+      .nullable()
+      .optional(),
+    isSNS: z.boolean().nullable().optional(),
     eanList: z.array(z.string()).nullable().optional(),
     upcList: z.array(z.string()).nullable().optional(),
     variations: z

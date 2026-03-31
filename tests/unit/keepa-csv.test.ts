@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   decodeCsvTimeSeries,
+  decodeCouponTimeSeries,
   getLatestCsvValue,
 } from "../../src/adapter/keepa-csv.js";
 
@@ -40,6 +41,50 @@ describe("keepa-csv", () => {
       const csv = [0, 1999];
       const result = decodeCsvTimeSeries(csv, { isPriceCents: false });
       expect(result[0].value).toBe(1999);
+    });
+  });
+
+  describe("decodeCouponTimeSeries", () => {
+    it("returns empty array for null input", () => {
+      expect(decodeCouponTimeSeries(null)).toEqual([]);
+      expect(decodeCouponTimeSeries(undefined)).toEqual([]);
+      expect(decodeCouponTimeSeries([])).toEqual([]);
+    });
+
+    it("decodes percent-off coupon triplet", () => {
+      // [time, 0, -10] => 10% off, no absolute discount
+      const csv = [0, 0, -10];
+      const result = decodeCouponTimeSeries(csv);
+      expect(result).toHaveLength(1);
+      expect(result[0].percent_discount).toBe(10);
+      expect(result[0].absolute_discount).toBeNull();
+    });
+
+    it("decodes absolute-off coupon triplet", () => {
+      // [time, 500, 0] => $5.00 off, no percent discount
+      const csv = [0, 500, 0];
+      const result = decodeCouponTimeSeries(csv);
+      expect(result).toHaveLength(1);
+      expect(result[0].absolute_discount).toBe(5.00);
+      expect(result[0].percent_discount).toBeNull();
+    });
+
+    it("decodes coupon removed (both zeros)", () => {
+      const csv = [0, 0, 0];
+      const result = decodeCouponTimeSeries(csv);
+      expect(result).toHaveLength(1);
+      expect(result[0].absolute_discount).toBeNull();
+      expect(result[0].percent_discount).toBeNull();
+    });
+
+    it("handles multiple triplets", () => {
+      const csv = [0, 0, -10, 60, 0, 0, 120, 300, -5];
+      const result = decodeCouponTimeSeries(csv);
+      expect(result).toHaveLength(3);
+      expect(result[0].percent_discount).toBe(10);
+      expect(result[1].percent_discount).toBeNull(); // removed
+      expect(result[2].absolute_discount).toBe(3.00);
+      expect(result[2].percent_discount).toBe(5);
     });
   });
 

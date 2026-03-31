@@ -1,11 +1,14 @@
 import { KeepaClient, KeepaApiError } from "./adapter/client.js";
-import { getProduct, getTokenStatus } from "./adapter/endpoints.js";
+import { getProduct, getTokenStatus, getBestSellers, getCategoryLookup } from "./adapter/endpoints.js";
 import {
   toUniversalEnvelope,
   toErrorEnvelope,
   transformProductSnapshot,
   transformBuyBox,
   transformVariationFamily,
+  transformSalesHistory,
+  transformDeals,
+  transformSellerStats,
 } from "./adapter/transformer.js";
 import { decodeCsvTimeSeries } from "./adapter/keepa-csv.js";
 import { CSV_TYPE, DEFAULT_DOMAIN } from "./constants.js";
@@ -92,6 +95,12 @@ export class KeepaSkill {
           rating: decodeCsvTimeSeries(csv[CSV_TYPE.RATING]),
           review_count: decodeCsvTimeSeries(csv[CSV_TYPE.COUNT_REVIEWS]),
           buy_box_price: decodeCsvTimeSeries(csv[CSV_TYPE.BUY_BOX_SHIPPING], { isPriceCents: true }),
+          list_price: decodeCsvTimeSeries(csv[CSV_TYPE.LIST_PRICE], { isPriceCents: true }),
+          lightning_deal: decodeCsvTimeSeries(csv[CSV_TYPE.LIGHTNING_DEAL], { isPriceCents: true }),
+          fba_price: decodeCsvTimeSeries(csv[CSV_TYPE.NEW_FBA], { isPriceCents: true }),
+          fbm_price: decodeCsvTimeSeries(csv[CSV_TYPE.NEW_FBM_SHIPPING], { isPriceCents: true }),
+          offer_count_new: decodeCsvTimeSeries(csv[CSV_TYPE.COUNT_NEW]),
+          offer_count_used: decodeCsvTimeSeries(csv[CSV_TYPE.COUNT_USED]),
         };
       });
       return toUniversalEnvelope("price_history", histories, {
@@ -304,6 +313,121 @@ export class KeepaSkill {
       }
 
       return toUniversalEnvelope("variation_alerts", allAlerts, {
+        tokens: res.tokens,
+      });
+    } catch (err) {
+      return this.handleError(err);
+    }
+  }
+
+  // --- New Tools ---
+
+  async getSalesHistory(
+    asins: string[],
+    opts?: { domain?: string }
+  ): Promise<UniversalEnvelope> {
+    try {
+      const res = await getProduct(this.client, {
+        asins,
+        domain: opts?.domain,
+        stats: 30,
+        history: true,
+      });
+      const histories = (res.data.products ?? []).map(transformSalesHistory);
+      return toUniversalEnvelope("sales_history", histories, {
+        marketplace: opts?.domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+    } catch (err) {
+      return this.handleError(err);
+    }
+  }
+
+  async getDeals(
+    asins: string[],
+    opts?: { domain?: string }
+  ): Promise<UniversalEnvelope> {
+    try {
+      const res = await getProduct(this.client, {
+        asins,
+        domain: opts?.domain,
+        stats: 30,
+        history: true,
+      });
+      const deals = (res.data.products ?? []).map(transformDeals);
+      return toUniversalEnvelope("deals", deals, {
+        marketplace: opts?.domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+    } catch (err) {
+      return this.handleError(err);
+    }
+  }
+
+  async getSellerStats(
+    asins: string[],
+    opts?: { domain?: string }
+  ): Promise<UniversalEnvelope> {
+    try {
+      const res = await getProduct(this.client, {
+        asins,
+        domain: opts?.domain,
+        stats: 30,
+        offers: 20,
+      });
+      const stats = (res.data.products ?? []).map(transformSellerStats);
+      return toUniversalEnvelope("seller_stats", stats, {
+        marketplace: opts?.domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+    } catch (err) {
+      return this.handleError(err);
+    }
+  }
+
+  async getBestSellers(
+    category: number,
+    opts?: { domain?: string }
+  ): Promise<UniversalEnvelope> {
+    try {
+      const res = await getBestSellers(this.client, {
+        domain: opts?.domain,
+        category,
+      });
+      const data = res.data.bestSellersList;
+      return toUniversalEnvelope("best_sellers", {
+        category_id: data?.categoryId ?? category,
+        asin_list: data?.asinList ?? [],
+        last_update: data?.lastUpdate ?? null,
+      }, {
+        marketplace: opts?.domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+    } catch (err) {
+      return this.handleError(err);
+    }
+  }
+
+  async getCategory(
+    category: number,
+    opts?: { domain?: string }
+  ): Promise<UniversalEnvelope> {
+    try {
+      const res = await getCategoryLookup(this.client, {
+        domain: opts?.domain,
+        category,
+      });
+      const categories = res.data.categories ?? {};
+      const catData = categories[String(category)] ?? null;
+      return toUniversalEnvelope("category", catData ? {
+        category_id: catData.catId,
+        name: catData.name,
+        parent: catData.parent ?? null,
+        children: catData.children ?? [],
+        highest_rank: catData.highestRank ?? null,
+        product_count: catData.productCount ?? null,
+      } : null, {
+        marketplace: opts?.domain ?? DEFAULT_DOMAIN,
         tokens: res.tokens,
       });
     } catch (err) {

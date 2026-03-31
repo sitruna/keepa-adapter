@@ -2,8 +2,8 @@ import { ADAPTER_VERSION, SOURCE, CSV_TYPE, KEEPA_DOMAINS } from "../constants.j
 import type { UniversalEnvelope, ProductSnapshot, SubcategoryRank } from "../schema/universal.js";
 import type { TokenMeta } from "./client.js";
 import type { KeepaProduct } from "../schema/keepa.js";
-import { getLatestCsvValue } from "./keepa-csv.js";
-import { dateToKeepaTime } from "./keepa-time.js";
+import { getLatestCsvValue, decodeCsvTimeSeries, decodeCouponTimeSeries } from "./keepa-csv.js";
+import { dateToKeepaTime, keepaTimeToISO } from "./keepa-time.js";
 
 // --- Envelope builders ---
 
@@ -172,6 +172,22 @@ export function transformProductSnapshot(
     parent_asin: raw.parentAsin ?? null,
     child_asins: childAsins,
     variation_attributes: variationAttributes,
+    monthly_sold: raw.monthlySold ?? null,
+    list_price: getValueWithFallback(csv, statsCurrent, CSV_TYPE.LIST_PRICE, { isPriceCents: true }),
+    offer_count_new: getValueWithFallback(csv, statsCurrent, CSV_TYPE.COUNT_NEW),
+    offer_count_used: getValueWithFallback(csv, statsCurrent, CSV_TYPE.COUNT_USED),
+    offer_count_fba: raw.stats?.offerCountFBA ?? null,
+    offer_count_fbm: raw.stats?.offerCountFBM ?? null,
+    out_of_stock_percentage_30: (() => {
+      const val = raw.stats?.outOfStockPercentage30?.[0];
+      return val != null && val !== -1 ? val : null;
+    })(),
+    out_of_stock_percentage_90: (() => {
+      const val = raw.stats?.outOfStockPercentage90?.[0];
+      return val != null && val !== -1 ? val : null;
+    })(),
+    is_sns: raw.isSNS ?? null,
+    frequently_bought_together: raw.frequentlyBoughtTogether ?? [],
   };
 }
 
@@ -231,4 +247,52 @@ export function transformVariationFamily(raw: KeepaProduct) {
     variation_attributes: attributes,
     variation_asins: variationAsins,
   };
+}
+
+export function transformSalesHistory(raw: KeepaProduct) {
+  const history = decodeCsvTimeSeries(raw.monthlySoldHistory);
+  return {
+    asin: raw.asin,
+    current_monthly_sold: raw.monthlySold ?? null,
+    history,
+  };
+}
+
+export function transformDeals(raw: KeepaProduct) {
+  const csv = raw.csv ?? [];
+  return {
+    asin: raw.asin,
+    coupon_history: decodeCouponTimeSeries(raw.couponHistory),
+    promotions: (raw.promotions ?? []).map((p) => ({
+      type: p.type ?? null,
+      seller_id: p.sellerId ?? null,
+      amount: p.amount != null ? p.amount / 100 : null,
+      discount_percent: p.discountPercent ?? null,
+    })),
+    lightning_deal_history: decodeCsvTimeSeries(csv[CSV_TYPE.LIGHTNING_DEAL], {
+      isPriceCents: true,
+    }),
+  };
+}
+
+export function transformSellerStats(raw: KeepaProduct) {
+  const buyBoxStats = raw.stats?.buyBoxStats;
+  if (!buyBoxStats) {
+    return { asin: raw.asin, sellers: [] };
+  }
+
+  const sellers = Object.entries(buyBoxStats).map(([sellerId, stats]) => ({
+    seller_id: sellerId,
+    percentage_won: stats.percentageWon ?? null,
+    avg_price: stats.avgPrice != null ? stats.avgPrice / 100 : null,
+    avg_new_offer_count: stats.avgNewOfferCount ?? null,
+    avg_used_offer_count:
+      stats.avgUsedOfferCount != null && stats.avgUsedOfferCount !== -1
+        ? stats.avgUsedOfferCount
+        : null,
+    is_fba: stats.isFBA ?? null,
+    last_seen: stats.lastSeen != null ? keepaTimeToISO(stats.lastSeen) : null,
+  }));
+
+  return { asin: raw.asin, sellers };
 }

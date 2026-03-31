@@ -90,5 +90,24 @@ export function initDb(dbPath?: string): Database.Database {
     db.exec("ALTER TABLE snapshots ADD COLUMN subcategory_ranks_json TEXT");
   }
 
+  // Phase 2 migrations
+  const phase2Columns: [string, string][] = [
+    ["monthly_sold", "INTEGER"],
+    ["list_price", "REAL"],
+    ["offer_count_new", "INTEGER"],
+    ["offer_count_used", "INTEGER"],
+    ["offer_count_fba", "INTEGER"],
+    ["offer_count_fbm", "INTEGER"],
+    ["out_of_stock_percentage_30", "INTEGER"],
+    ["out_of_stock_percentage_90", "INTEGER"],
+    ["is_sns", "INTEGER"],
+    ["frequently_bought_together_json", "TEXT"],
+  ];
+  for (const [col, type] of phase2Columns) {
+    if (!columnNames.has(col)) {
+      db.exec(`ALTER TABLE snapshots ADD COLUMN ${col} ${type}`);
+    }
+  }
+
   return db;
 }

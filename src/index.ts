@@ -3,13 +3,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { KeepaClient, KeepaApiError } from "./adapter/client.js";
-import { getProduct, getTokenStatus } from "./adapter/endpoints.js";
+import { getProduct, getTokenStatus, getBestSellers, getCategoryLookup } from "./adapter/endpoints.js";
 import {
   toUniversalEnvelope,
   toErrorEnvelope,
   transformProductSnapshot,
   transformBuyBox,
   transformVariationFamily,
+  transformSalesHistory,
+  transformDeals,
+  transformSellerStats,
 } from "./adapter/transformer.js";
 import { decodeCsvTimeSeries } from "./adapter/keepa-csv.js";
 import { CSV_TYPE, DEFAULT_DOMAIN } from "./constants.js";
@@ -112,6 +115,12 @@ server.tool(
           rating: decodeCsvTimeSeries(csv[CSV_TYPE.RATING]),
           review_count: decodeCsvTimeSeries(csv[CSV_TYPE.COUNT_REVIEWS]),
           buy_box_price: decodeCsvTimeSeries(csv[CSV_TYPE.BUY_BOX_SHIPPING], { isPriceCents: true }),
+          list_price: decodeCsvTimeSeries(csv[CSV_TYPE.LIST_PRICE], { isPriceCents: true }),
+          lightning_deal: decodeCsvTimeSeries(csv[CSV_TYPE.LIGHTNING_DEAL], { isPriceCents: true }),
+          fba_price: decodeCsvTimeSeries(csv[CSV_TYPE.NEW_FBA], { isPriceCents: true }),
+          fbm_price: decodeCsvTimeSeries(csv[CSV_TYPE.NEW_FBM_SHIPPING], { isPriceCents: true }),
+          offer_count_new: decodeCsvTimeSeries(csv[CSV_TYPE.COUNT_NEW]),
+          offer_count_used: decodeCsvTimeSeries(csv[CSV_TYPE.COUNT_USED]),
         };
       });
       const envelope = toUniversalEnvelope("price_history", histories, {
@@ -480,6 +489,158 @@ server.tool(
       }
 
       const envelope = toUniversalEnvelope("promo_impact", impact);
+      return { content: [{ type: "text", text: JSON.stringify(envelope, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+// =====================
+// New Tools (5)
+// =====================
+
+// --- 14. Get Sales History ---
+server.tool(
+  "keepa_get_sales_history",
+  "Get monthly sales volume time series for ASINs. Shows how many units are sold per month over time.",
+  {
+    asins: z.array(z.string()).min(1).max(100).describe("ASINs to get sales history for"),
+    domain: z.string().optional().describe("Amazon domain (default: com)"),
+  },
+  async ({ asins, domain }) => {
+    try {
+      const res = await getProduct(client, {
+        asins,
+        domain: domain ?? DEFAULT_DOMAIN,
+        stats: 30,
+        history: true,
+      });
+      const histories = (res.data.products ?? []).map(transformSalesHistory);
+      const envelope = toUniversalEnvelope("sales_history", histories, {
+        marketplace: domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+      return { content: [{ type: "text", text: JSON.stringify(envelope, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+// --- 15. Get Deals ---
+server.tool(
+  "keepa_get_deals",
+  "Get coupon history, active promotions, and lightning deal data for ASINs.",
+  {
+    asins: z.array(z.string()).min(1).max(100).describe("ASINs to get deal data for"),
+    domain: z.string().optional().describe("Amazon domain (default: com)"),
+  },
+  async ({ asins, domain }) => {
+    try {
+      const res = await getProduct(client, {
+        asins,
+        domain: domain ?? DEFAULT_DOMAIN,
+        stats: 30,
+        history: true,
+      });
+      const deals = (res.data.products ?? []).map(transformDeals);
+      const envelope = toUniversalEnvelope("deals", deals, {
+        marketplace: domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+      return { content: [{ type: "text", text: JSON.stringify(envelope, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+// --- 16. Get Seller Stats ---
+server.tool(
+  "keepa_get_seller_stats",
+  "Get buy box statistics per seller for ASINs, including win percentage, average price, and FBA status.",
+  {
+    asins: z.array(z.string()).min(1).max(100).describe("ASINs to get seller stats for"),
+    domain: z.string().optional().describe("Amazon domain (default: com)"),
+  },
+  async ({ asins, domain }) => {
+    try {
+      const res = await getProduct(client, {
+        asins,
+        domain: domain ?? DEFAULT_DOMAIN,
+        stats: 30,
+        offers: 20,
+      });
+      const stats = (res.data.products ?? []).map(transformSellerStats);
+      const envelope = toUniversalEnvelope("seller_stats", stats, {
+        marketplace: domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+      return { content: [{ type: "text", text: JSON.stringify(envelope, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+// --- 17. Get Best Sellers ---
+server.tool(
+  "keepa_get_best_sellers",
+  "Get the best seller ASIN list for a category.",
+  {
+    category: z.number().int().describe("Category ID to look up"),
+    domain: z.string().optional().describe("Amazon domain (default: com)"),
+  },
+  async ({ category, domain }) => {
+    try {
+      const res = await getBestSellers(client, {
+        domain: domain ?? DEFAULT_DOMAIN,
+        category,
+      });
+      const data = res.data.bestSellersList;
+      const envelope = toUniversalEnvelope("best_sellers", {
+        category_id: data?.categoryId ?? category,
+        asin_list: data?.asinList ?? [],
+        last_update: data?.lastUpdate ?? null,
+      }, {
+        marketplace: domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+      return { content: [{ type: "text", text: JSON.stringify(envelope, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+// --- 18. Get Category ---
+server.tool(
+  "keepa_get_category",
+  "Look up category details including name, parent, children, and product count.",
+  {
+    category: z.number().int().describe("Category ID to look up"),
+    domain: z.string().optional().describe("Amazon domain (default: com)"),
+  },
+  async ({ category, domain }) => {
+    try {
+      const res = await getCategoryLookup(client, {
+        domain: domain ?? DEFAULT_DOMAIN,
+        category,
+      });
+      const categories = res.data.categories ?? {};
+      const catData = categories[String(category)] ?? null;
+      const envelope = toUniversalEnvelope("category", catData ? {
+        category_id: catData.catId,
+        name: catData.name,
+        parent: catData.parent ?? null,
+        children: catData.children ?? [],
+        highest_rank: catData.highestRank ?? null,
+        product_count: catData.productCount ?? null,
+      } : null, {
+        marketplace: domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
       return { content: [{ type: "text", text: JSON.stringify(envelope, null, 2) }] };
     } catch (err) {
       return errorResult(err);

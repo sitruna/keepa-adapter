@@ -23,6 +23,16 @@ function makeSnapshot(overrides: Partial<ProductSnapshot> = {}): ProductSnapshot
     parent_asin: "B0012PARENT",
     child_asins: [],
     variation_attributes: null,
+    monthly_sold: 10000,
+    list_price: 25.00,
+    offer_count_new: 5,
+    offer_count_used: 2,
+    offer_count_fba: 2,
+    offer_count_fbm: 1,
+    out_of_stock_percentage_30: 10,
+    out_of_stock_percentage_90: 15,
+    is_sns: true,
+    frequently_bought_together: [],
     ...overrides,
   };
 }
@@ -129,6 +139,67 @@ describe("change-detection", () => {
     expect(subcatChange).toBeDefined();
     expect(subcatChange!.field).toBe("subcategory_rank:Zinc");
     expect(subcatChange!.severity).toBe("warning");
+  });
+
+  it("detects monthly_sold drop >30% as warning", () => {
+    const prev = makeSnapshot({ monthly_sold: 10000 });
+    const curr = makeSnapshot({ monthly_sold: 5000 }); // 50% drop
+    const changes = detectChanges(prev, curr);
+    const soldChange = changes.find((c) => c.field === "monthly_sold");
+    expect(soldChange).toBeDefined();
+    expect(soldChange!.severity).toBe("warning");
+  });
+
+  it("ignores monthly_sold drop <30%", () => {
+    const prev = makeSnapshot({ monthly_sold: 10000 });
+    const curr = makeSnapshot({ monthly_sold: 8000 }); // 20% drop
+    const changes = detectChanges(prev, curr);
+    const soldChange = changes.find((c) => c.field === "monthly_sold");
+    expect(soldChange).toBeUndefined();
+  });
+
+  it("detects offer_count_new going to 0 as warning", () => {
+    const prev = makeSnapshot({ offer_count_new: 5 });
+    const curr = makeSnapshot({ offer_count_new: 0 });
+    const changes = detectChanges(prev, curr);
+    const offerChange = changes.find((c) => c.field === "offer_count_new");
+    expect(offerChange).toBeDefined();
+    expect(offerChange!.severity).toBe("warning");
+  });
+
+  it("detects offer_count_new change >50% as info", () => {
+    const prev = makeSnapshot({ offer_count_new: 10 });
+    const curr = makeSnapshot({ offer_count_new: 4 }); // 60% change
+    const changes = detectChanges(prev, curr);
+    const offerChange = changes.find((c) => c.field === "offer_count_new");
+    expect(offerChange).toBeDefined();
+    expect(offerChange!.severity).toBe("info");
+  });
+
+  it("detects out_of_stock_percentage_30 increase ≥10 points as warning", () => {
+    const prev = makeSnapshot({ out_of_stock_percentage_30: 10 });
+    const curr = makeSnapshot({ out_of_stock_percentage_30: 25 }); // +15 points
+    const changes = detectChanges(prev, curr);
+    const oosChange = changes.find((c) => c.field === "out_of_stock_percentage_30");
+    expect(oosChange).toBeDefined();
+    expect(oosChange!.severity).toBe("warning");
+  });
+
+  it("ignores out_of_stock_percentage_30 increase <10 points", () => {
+    const prev = makeSnapshot({ out_of_stock_percentage_30: 10 });
+    const curr = makeSnapshot({ out_of_stock_percentage_30: 15 }); // +5 points
+    const changes = detectChanges(prev, curr);
+    const oosChange = changes.find((c) => c.field === "out_of_stock_percentage_30");
+    expect(oosChange).toBeUndefined();
+  });
+
+  it("detects is_sns change as info", () => {
+    const prev = makeSnapshot({ is_sns: true });
+    const curr = makeSnapshot({ is_sns: false });
+    const changes = detectChanges(prev, curr);
+    const snsChange = changes.find((c) => c.field === "is_sns");
+    expect(snsChange).toBeDefined();
+    expect(snsChange!.severity).toBe("info");
   });
 
   it("ignores small subcategory rank changes", () => {

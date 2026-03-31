@@ -40,6 +40,52 @@ export function decodeCsvTimeSeries(
   return points;
 }
 
+export interface CouponTimeSeriesPoint {
+  timestamp: string;
+  absolute_discount: number | null;
+  percent_discount: number | null;
+}
+
+/**
+ * Decode Keepa's coupon history triplet format.
+ * Format: [keepaTime0, absoluteDiscount0, percentDiscount0, keepaTime1, ...]
+ * absoluteDiscount: cents off (0 = no absolute discount)
+ * percentDiscount: negative = percent off (e.g. -10 = 10% off), 0 = coupon removed
+ * Both 0 = coupon removed.
+ */
+export function decodeCouponTimeSeries(
+  csv: number[] | null | undefined
+): CouponTimeSeriesPoint[] {
+  if (!csv || csv.length < 3) return [];
+
+  const points: CouponTimeSeriesPoint[] = [];
+
+  for (let i = 0; i < csv.length - 2; i += 3) {
+    const keepaTime = csv[i];
+    const absoluteRaw = csv[i + 1];
+    const percentRaw = csv[i + 2];
+
+    // Both 0 means coupon was removed
+    const removed = absoluteRaw === 0 && percentRaw === 0;
+
+    points.push({
+      timestamp: keepaTimeToISO(keepaTime),
+      absolute_discount: removed
+        ? null
+        : absoluteRaw === 0
+          ? null
+          : absoluteRaw / 100,
+      percent_discount: removed
+        ? null
+        : percentRaw === 0
+          ? null
+          : Math.abs(percentRaw),
+    });
+  }
+
+  return points;
+}
+
 /**
  * Get the latest value from a Keepa CSV array.
  * Returns null if no valid data.

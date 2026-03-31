@@ -125,6 +125,65 @@ export function detectChanges(
     addChange("description", previous.description, current.description, "info");
   }
 
+  // Warning: monthly_sold dropped >30%
+  if (
+    previous.monthly_sold != null &&
+    current.monthly_sold != null &&
+    previous.monthly_sold > 0
+  ) {
+    const pctChange =
+      ((previous.monthly_sold - current.monthly_sold) / previous.monthly_sold) * 100;
+    if (pctChange > 30) {
+      addChange(
+        "monthly_sold",
+        previous.monthly_sold,
+        current.monthly_sold,
+        "warning"
+      );
+    }
+  }
+
+  // Warning/Info: offer_count_new changes
+  if (previous.offer_count_new !== current.offer_count_new) {
+    if (current.offer_count_new === 0 && previous.offer_count_new != null && previous.offer_count_new > 0) {
+      addChange("offer_count_new", previous.offer_count_new, current.offer_count_new, "warning");
+    } else if (
+      previous.offer_count_new != null &&
+      current.offer_count_new != null &&
+      previous.offer_count_new > 0
+    ) {
+      const pctChange =
+        (Math.abs(current.offer_count_new - previous.offer_count_new) /
+          previous.offer_count_new) *
+        100;
+      if (pctChange > 50) {
+        addChange("offer_count_new", previous.offer_count_new, current.offer_count_new, "info");
+      }
+    }
+  }
+
+  // Warning: out_of_stock_percentage_30 increased by ≥10 points
+  if (
+    previous.out_of_stock_percentage_30 != null &&
+    current.out_of_stock_percentage_30 != null
+  ) {
+    const pointIncrease =
+      current.out_of_stock_percentage_30 - previous.out_of_stock_percentage_30;
+    if (pointIncrease >= 10) {
+      addChange(
+        "out_of_stock_percentage_30",
+        previous.out_of_stock_percentage_30,
+        current.out_of_stock_percentage_30,
+        "warning"
+      );
+    }
+  }
+
+  // Info: is_sns changed
+  if (previous.is_sns !== current.is_sns) {
+    addChange("is_sns", previous.is_sns, current.is_sns, "info");
+  }
+
   // Warning: subcategory rank significant changes (>30% worsening in any subcat)
   if (previous.subcategory_ranks?.length && current.subcategory_ranks?.length) {
     for (const curr of current.subcategory_ranks) {

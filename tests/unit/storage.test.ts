@@ -38,6 +38,16 @@ function makeSnapshot(
     parent_asin: "B0012PARENT",
     child_asins: ["B0012CHILD1"],
     variation_attributes: { Color: "Blue" },
+    monthly_sold: 10000,
+    list_price: 25.00,
+    offer_count_new: 5,
+    offer_count_used: 2,
+    offer_count_fba: 2,
+    offer_count_fbm: 1,
+    out_of_stock_percentage_30: 43,
+    out_of_stock_percentage_90: 63,
+    is_sns: true,
+    frequently_bought_together: ["B001CHILD1", "B001CHILD2"],
     ...overrides,
   };
 }
@@ -59,6 +69,36 @@ describe("storage", () => {
       expect(retrieved!.amazon_price).toBe(19.99);
       expect(retrieved!.images).toEqual(["img1.jpg"]);
       expect(retrieved!.variation_attributes).toEqual({ Color: "Blue" });
+    });
+
+    it("round-trips new phase 2 fields", () => {
+      const snapshot = makeSnapshot();
+      insertSnapshot(db, snapshot);
+      const retrieved = getLatestSnapshot(db, "B0012ZQPKG", "com");
+      expect(retrieved).not.toBeNull();
+      expect(retrieved!.monthly_sold).toBe(10000);
+      expect(retrieved!.list_price).toBe(25.00);
+      expect(retrieved!.offer_count_new).toBe(5);
+      expect(retrieved!.offer_count_used).toBe(2);
+      expect(retrieved!.offer_count_fba).toBe(2);
+      expect(retrieved!.offer_count_fbm).toBe(1);
+      expect(retrieved!.out_of_stock_percentage_30).toBe(43);
+      expect(retrieved!.out_of_stock_percentage_90).toBe(63);
+      expect(retrieved!.is_sns).toBe(true);
+      expect(retrieved!.frequently_bought_together).toEqual(["B001CHILD1", "B001CHILD2"]);
+    });
+
+    it("round-trips null phase 2 fields", () => {
+      const snapshot = makeSnapshot({
+        monthly_sold: null,
+        is_sns: null,
+        frequently_bought_together: [],
+      });
+      insertSnapshot(db, snapshot);
+      const retrieved = getLatestSnapshot(db, "B0012ZQPKG", "com");
+      expect(retrieved!.monthly_sold).toBeNull();
+      expect(retrieved!.is_sns).toBeNull();
+      expect(retrieved!.frequently_bought_together).toEqual([]);
     });
 
     it("returns null for non-existent ASIN", () => {
