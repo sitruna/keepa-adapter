@@ -71,6 +71,7 @@ server.tool(
         domain: domain ?? DEFAULT_DOMAIN,
         stats: stats_days ?? 30,
         rating: true,
+        buybox: true,
       });
       const products = (res.data.products ?? []).map((p) =>
         transformProductSnapshot(p, domain)
@@ -149,6 +150,7 @@ server.tool(
         domain: domain ?? DEFAULT_DOMAIN,
         stats: 1,
         offers: 20,
+        buybox: true,
       });
       const buyBoxes = (res.data.products ?? []).map(transformBuyBox);
       const envelope = toUniversalEnvelope("buy_box", buyBoxes, {
@@ -281,6 +283,7 @@ server.tool(
           domain: domainStr,
           stats: 30,
           rating: true,
+          buybox: true,
         });
 
         for (const raw of res.data.products ?? []) {
@@ -571,6 +574,7 @@ server.tool(
         domain: domain ?? DEFAULT_DOMAIN,
         stats: 30,
         offers: 20,
+        buybox: true,
       });
       const stats = (res.data.products ?? []).map(transformSellerStats);
       const envelope = toUniversalEnvelope("seller_stats", stats, {
