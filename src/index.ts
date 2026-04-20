@@ -73,9 +73,16 @@ server.tool(
         rating: true,
         buybox: true,
       });
-      const products = (res.data.products ?? []).map((p) =>
-        transformProductSnapshot(p, domain)
-      );
+          // Strip out_of_stock_percentage_* from MCP output. Fields are still
+      // populated internally for storage and change-detection use.
+      const products = (res.data.products ?? []).map((p) => {
+        const {
+          out_of_stock_percentage_30: _oos30,
+          out_of_stock_percentage_90: _oos90,
+          ...rest
+        } = transformProductSnapshot(p, domain);
+        return rest;
+      });
       const envelope = toUniversalEnvelope("product_snapshot", products, {
         marketplace: domain ?? DEFAULT_DOMAIN,
         tokens: res.tokens,
