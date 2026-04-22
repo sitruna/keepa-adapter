@@ -56,6 +56,13 @@ function domainName(domainId: number): string {
 
 // --- Per-type transformers ---
 
+// Keepa uses -1 ("no data") and -2 ("OOS / no offer / not collected") as
+// sentinels. Treat both as null everywhere the adapter surfaces values.
+function normaliseSentinel(value: number | null | undefined): number | null {
+  if (value == null || value === -1 || value === -2) return null;
+  return value;
+}
+
 /** Get latest value from CSV array, falling back to stats.current[index] */
 function getValueWithFallback(
   csv: (number[] | null)[] | null,
@@ -68,9 +75,26 @@ function getValueWithFallback(
   if (csvVal != null) return csvVal;
 
   // Fallback to stats.current
-  const statsVal = statsCurrent?.[index];
-  if (statsVal == null || statsVal === -1) return null;
+  const statsVal = normaliseSentinel(statsCurrent?.[index]);
+  if (statsVal == null) return null;
   return opts?.isPriceCents ? statsVal / 100 : statsVal;
+}
+
+/**
+ * Try a chain of CSV indices for a price, returning the first non-null value.
+ * Used to surface FBM prices when the primary `NEW` index is empty — e.g. for
+ * FBM-only UK listings where Keepa may only populate NEW_FBM_SHIPPING.
+ */
+function getPriceWithFallbacks(
+  csv: (number[] | null)[] | null,
+  statsCurrent: (number | null)[] | null | undefined,
+  indices: number[]
+): number | null {
+  for (const index of indices) {
+    const val = getValueWithFallback(csv, statsCurrent, index, { isPriceCents: true });
+    if (val != null) return val;
+  }
+  return null;
 }
 
 export function transformProductSnapshot(
@@ -130,7 +154,7 @@ export function transformProductSnapshot(
       subcategoryRanks.push({
         category_id: catId,
         category_name: catNameMap.get(catId) ?? null,
-        rank: lastValue === -1 ? null : lastValue,
+        rank: normaliseSentinel(lastValue),
         is_primary: catId === primaryCatId,
       });
     }
@@ -155,7 +179,13 @@ export function transformProductSnapshot(
     title: raw.title ?? null,
     brand: raw.brand ?? null,
     amazon_price: getValueWithFallback(csv, statsCurrent, CSV_TYPE.AMAZON, { isPriceCents: true }),
-    new_price: getValueWithFallback(csv, statsCurrent, CSV_TYPE.NEW, { isPriceCents: true }),
+    // For FBM-only listings Keepa sometimes leaves csv[NEW] empty and only
+    // populates csv[NEW_FBM_SHIPPING] / csv[NEW_FBA]. Fall through in that order.
+    new_price: getPriceWithFallbacks(csv, statsCurrent, [
+      CSV_TYPE.NEW,
+      CSV_TYPE.NEW_FBM_SHIPPING,
+      CSV_TYPE.NEW_FBA,
+    ]),
     sales_rank: getValueWithFallback(csv, statsCurrent, CSV_TYPE.SALES_RANK),
     subcategory_ranks: subcategoryRanks,
     rating: (() => {
@@ -165,7 +195,13 @@ export function transformProductSnapshot(
     review_count: getValueWithFallback(csv, statsCurrent, CSV_TYPE.COUNT_REVIEWS),
     buy_box_seller_id: buyBoxSellerId,
     buy_box_is_amazon: buyBoxSellerId === "ATVPDKIKX0DER" ? true : buyBoxSellerId ? false : null,
-    buy_box_price: getValueWithFallback(csv, statsCurrent, CSV_TYPE.BUY_BOX_SHIPPING, { isPriceCents: true }),
+    // Buy box falls back to the cheapest new offer (FBM shipping-inclusive,
+    // then FBA) so FBM-only listings still surface a price here.
+    buy_box_price: getPriceWithFallbacks(csv, statsCurrent, [
+      CSV_TYPE.BUY_BOX_SHIPPING,
+      CSV_TYPE.NEW_FBM_SHIPPING,
+      CSV_TYPE.NEW_FBA,
+    ]),
     images,
     features: raw.features ?? [],
     description: raw.description ?? null,
@@ -176,16 +212,13 @@ export function transformProductSnapshot(
     list_price: getValueWithFallback(csv, statsCurrent, CSV_TYPE.LIST_PRICE, { isPriceCents: true }),
     offer_count_new: getValueWithFallback(csv, statsCurrent, CSV_TYPE.COUNT_NEW),
     offer_count_used: getValueWithFallback(csv, statsCurrent, CSV_TYPE.COUNT_USED),
-    offer_count_fba: raw.stats?.offerCountFBA ?? null,
-    offer_count_fbm: raw.stats?.offerCountFBM ?? null,
-    out_of_stock_percentage_30: (() => {
-      const val = raw.stats?.outOfStockPercentage30?.[0];
-      return val != null && val !== -1 ? val : null;
-    })(),
-    out_of_stock_percentage_90: (() => {
-      const val = raw.stats?.outOfStockPercentage90?.[0];
-      return val != null && val !== -1 ? val : null;
-    })(),
+    // Keepa returns -1 / -2 when FBA/FBM offer tracking is absent for a
+    // product (common on FBM-only UK listings). Surface those as null rather
+    // than leaking the sentinel into the MCP response.
+    offer_count_fba: normaliseSentinel(raw.stats?.offerCountFBA),
+    offer_count_fbm: normaliseSentinel(raw.stats?.offerCountFBM),
+    out_of_stock_percentage_30: normaliseSentinel(raw.stats?.outOfStockPercentage30?.[0]),
+    out_of_stock_percentage_90: normaliseSentinel(raw.stats?.outOfStockPercentage90?.[0]),
     is_sns: raw.isSNS ?? null,
     frequently_bought_together: raw.frequentlyBoughtTogether ?? [],
   };

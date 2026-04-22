@@ -5,10 +5,17 @@ export interface TimeSeriesPoint {
   value: number | null;
 }
 
+// Keepa sentinels: -1 = never tracked, -2 = out of stock / no offer / not collected.
+// Both indicate "no valid value" and should surface as null rather than leaking
+// into the output (e.g. -2 cents becoming -0.02).
+function isSentinel(value: number): boolean {
+  return value === -1 || value === -2;
+}
+
 /**
  * Decode Keepa's flat CSV array into a time series.
  * Format: [keepaTime0, value0, keepaTime1, value1, ...]
- * Values of -1 mean no data (null).
+ * Values of -1 (no data) or -2 (OOS / no offer) mean null.
  * If `isPriceCents` is true, values are converted from cents to dollars.
  */
 export function decodeCsvTimeSeries(
@@ -24,12 +31,11 @@ export function decodeCsvTimeSeries(
     const keepaTime = csv[i];
     const rawValue = csv[i + 1];
 
-    const value =
-      rawValue === -1
-        ? null
-        : isPriceCents
-          ? rawValue / 100
-          : rawValue;
+    const value = isSentinel(rawValue)
+      ? null
+      : isPriceCents
+        ? rawValue / 100
+        : rawValue;
 
     points.push({
       timestamp: keepaTimeToISO(keepaTime),
@@ -88,7 +94,7 @@ export function decodeCouponTimeSeries(
 
 /**
  * Get the latest value from a Keepa CSV array.
- * Returns null if no valid data.
+ * Returns null for sentinel values (-1 no data, -2 OOS / no offer).
  */
 export function getLatestCsvValue(
   csv: number[] | null | undefined,
@@ -96,6 +102,6 @@ export function getLatestCsvValue(
 ): number | null {
   if (!csv || csv.length < 2) return null;
   const rawValue = csv[csv.length - 1];
-  if (rawValue === -1) return null;
+  if (isSentinel(rawValue)) return null;
   return opts?.isPriceCents ? rawValue / 100 : rawValue;
 }

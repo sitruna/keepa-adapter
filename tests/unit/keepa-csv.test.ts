@@ -30,6 +30,13 @@ describe("keepa-csv", () => {
       expect(result[1].value).toBe(500);
     });
 
+    it("converts -2 (OOS / no offer) to null instead of -0.02 cents", () => {
+      const csv = [0, -2, 60, 2499];
+      const result = decodeCsvTimeSeries(csv, { isPriceCents: true });
+      expect(result[0].value).toBeNull();
+      expect(result[1].value).toBe(24.99);
+    });
+
     it("converts cents to dollars when isPriceCents is true", () => {
       const csv = [0, 1999, 60, 2499];
       const result = decodeCsvTimeSeries(csv, { isPriceCents: true });
@@ -103,6 +110,11 @@ describe("keepa-csv", () => {
     it("returns null if last value is -1", () => {
       const csv = [0, 1000, 60, -1];
       expect(getLatestCsvValue(csv)).toBeNull();
+    });
+
+    it("returns null if last value is -2 (OOS sentinel)", () => {
+      const csv = [0, 1000, 60, -2];
+      expect(getLatestCsvValue(csv, { isPriceCents: true })).toBeNull();
     });
 
     it("converts cents to dollars", () => {
