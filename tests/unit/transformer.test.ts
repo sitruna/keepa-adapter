@@ -246,6 +246,41 @@ describe("transformer", () => {
       expect(snapshot.offer_count_new).toBe(5);
     });
 
+    it("normalises -1 / -2 sentinels on offer_count_fba and offer_count_fbm", () => {
+      // -2 is Keepa's "no FBA/FBM offer tracked" sentinel, common on FBM-only
+      // UK listings. The adapter previously leaked it into the MCP response.
+      const raw = makeRawProduct({
+        stats: {
+          current: [],
+          offerCountFBA: -2,
+          offerCountFBM: -1,
+        },
+      });
+      const snapshot = transformProductSnapshot(raw, "uk");
+      expect(snapshot.offer_count_fba).toBeNull();
+      expect(snapshot.offer_count_fbm).toBeNull();
+    });
+
+    it("falls back to NEW_FBM_SHIPPING for FBM-only listings where NEW is empty", () => {
+      // Mirrors the reported UK FBM case (B07KS958KC): csv[AMAZON] and csv[NEW]
+      // are null, but csv[NEW_FBM_SHIPPING] has live FBM pricing. new_price
+      // and buy_box_price should still surface.
+      const csv: (number[] | null)[] = new Array(19).fill(null);
+      csv[7] = [0, 1599]; // NEW_FBM_SHIPPING = £15.99
+      const raw = makeRawProduct({
+        csv,
+        stats: {
+          current: [],
+          offerCountFBA: -2,
+          offerCountFBM: -2,
+        },
+      });
+      const snapshot = transformProductSnapshot(raw, "uk");
+      expect(snapshot.new_price).toBe(15.99);
+      expect(snapshot.buy_box_price).toBe(15.99);
+      expect(snapshot.amazon_price).toBeNull();
+    });
+
     it("returns empty array for null frequentlyBoughtTogether", () => {
       const raw = makeRawProduct({ frequentlyBoughtTogether: null });
       const snapshot = transformProductSnapshot(raw, "com");

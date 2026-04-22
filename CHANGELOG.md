@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **FBM-only listings now surface pricing and offer counts.** `keepa_get_product` and `keepa_get_product_slim` previously returned `-2` for `offer_count_fba`/`offer_count_fbm` and `null` across price fields for FBM-only listings (reproduced on `B07KS958KC` on amazon.co.uk). Root cause: Keepa uses `-1` ("no data") and `-2` ("OOS / no offer / not collected") as sentinels, but the adapter only normalised `-1` — so `-2` leaked through on offer counts and produced `-0.02` on price CSVs. Fixes:
+  - Both sentinels are now treated as `null` in `getLatestCsvValue`, `decodeCsvTimeSeries`, `offer_count_fba`, `offer_count_fbm`, `out_of_stock_percentage_*`, and subcategory ranks.
+  - `new_price` now falls back to `csv[NEW_FBM_SHIPPING]` and then `csv[NEW_FBA]` when `csv[NEW]` is empty, so FBM-only listings surface a price.
+  - `buy_box_price` falls back through the same FBM chain when `csv[BUY_BOX_SHIPPING]` is empty.
+
 ## 1.2.0 — 2026-04-22
 
 ### Added
