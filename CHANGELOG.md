@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — 2026-04-22
+
+### Added
+- **`keepa_get_product_slim` tool.** Field-projected variant of `keepa_get_product`. Default projection returns the 10 fields most skills actually use (asin, title, brand, new_price, sales_rank, rating, review_count, monthly_sold, offer_count_fba, offer_count_fbm) — drops description/features/subcategory_ranks/images/variations by default. Measured ~85% smaller than `keepa_get_product` on a 25-ASIN batch (Henryka UK): the default call blows the MCP response-token limit (~75 KB for 25 ASINs) while the slim variant stays comfortably inside (~10 KB). Pass explicit `fields` to override the projection; unknown names are silently dropped.
+- **Response envelope `data_type` is `product_snapshot_slim`** (vs `product_snapshot` for the full tool) so downstream skills can tell them apart.
+
+### Changed
+- **`keepa_get_product` description** updated to recommend `keepa_get_product_slim` when skills only need top-level metrics.
+
 ## 1.1.0 — 2026-04-13
 
 ### Fixed

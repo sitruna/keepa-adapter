@@ -55,10 +55,27 @@ function errorResult(err: unknown) {
 // Read Tools (5)
 // =====================
 
+// Default projection for keepa_get_product_slim — the 10 fields most skills
+// actually use. Drops description/features/subcategory_ranks/images/variations
+// which together account for ~85% of per-product response size. Override by
+// passing an explicit `fields` array.
+const SLIM_DEFAULT_FIELDS = [
+  "asin",
+  "title",
+  "brand",
+  "new_price",
+  "sales_rank",
+  "rating",
+  "review_count",
+  "monthly_sold",
+  "offer_count_fba",
+  "offer_count_fbm",
+] as const;
+
 // --- 1. Get Product ---
 server.tool(
   "keepa_get_product",
-  "Fetch current product data for 1-100 ASINs from Keepa. Returns title, brand, prices, BSR, rating, buy box, images, features, variations.",
+  "Fetch current product data for 1-100 ASINs from Keepa. Returns title, brand, prices, BSR, rating, buy box, images, features, variations. NOTE: default response shape is ~3 KB per product (~75 KB for 25 ASINs — exceeds MCP response-token limit). If you only need top-level metrics, prefer keepa_get_product_slim which drops description/features/subcategory_ranks/images by default.",
   {
     asins: z.array(z.string()).min(1).max(100).describe("ASINs to look up (1-100)"),
     domain: z.string().optional().describe("Amazon domain (default: com)"),
@@ -77,6 +94,55 @@ server.tool(
         transformProductSnapshot(p, domain)
       );
       const envelope = toUniversalEnvelope("product_snapshot", products, {
+        marketplace: domain ?? DEFAULT_DOMAIN,
+        tokens: res.tokens,
+      });
+      return { content: [{ type: "text", text: JSON.stringify(envelope, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+// --- 1b. Get Product (slim) ---
+server.tool(
+  "keepa_get_product_slim",
+  "Slim variant of keepa_get_product. Returns only selected fields per ASIN — default projection covers the 10 fields most skills use (asin, title, brand, new_price, sales_rank, rating, review_count, monthly_sold, offer_count_fba, offer_count_fbm). Drops description/features/subcategory_ranks/images/variations by default. Typically ~85% smaller than keepa_get_product on 25-ASIN batches. Pass `fields` to override the projection (valid names match ProductSnapshot schema). Unknown field names are silently ignored.",
+  {
+    asins: z.array(z.string()).min(1).max(100).describe("ASINs to look up (1-100)"),
+    domain: z.string().optional().describe("Amazon domain (default: com)"),
+    stats_days: z.number().int().optional().describe("Number of days for stats (default: 30)"),
+    fields: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Optional list of field names to return per product. When omitted, uses the 10-field default projection."
+      ),
+  },
+  async ({ asins, domain, stats_days, fields }) => {
+    try {
+      const res = await getProduct(client, {
+        asins,
+        domain: domain ?? DEFAULT_DOMAIN,
+        stats: stats_days ?? 30,
+        rating: true,
+        buybox: true,
+      });
+      const selected =
+        fields && fields.length > 0
+          ? Array.from(new Set(fields))
+          : [...SLIM_DEFAULT_FIELDS];
+      const products = (res.data.products ?? []).map((p) => {
+        const full = transformProductSnapshot(p, domain) as Record<string, unknown>;
+        const slim: Record<string, unknown> = {};
+        for (const key of selected) {
+          if (Object.prototype.hasOwnProperty.call(full, key)) {
+            slim[key] = full[key];
+          }
+        }
+        return slim;
+      });
+      const envelope = toUniversalEnvelope("product_snapshot_slim", products, {
         marketplace: domain ?? DEFAULT_DOMAIN,
         tokens: res.tokens,
       });
