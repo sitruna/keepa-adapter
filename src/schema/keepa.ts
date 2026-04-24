@@ -93,6 +93,8 @@ export const KeepaProductSchema = z
             isBuyBoxWinner: z.boolean().nullable().optional(),
             lastSeen: z.number().nullable().optional(),
             offerCSV: z.array(z.number()).nullable().optional(),
+            price: z.number().nullable().optional(),
+            shipping: z.number().nullable().optional(),
           })
           .passthrough()
       )
@@ -153,6 +155,54 @@ export const KeepaProductSchema = z
         pickAndPackFee: z.number().nullable().optional(),
       })
       .passthrough()
+      .nullable()
+      .optional(),
+    brandStoreName: z.string().nullable().optional(),
+    brandStoreUrlName: z.string().nullable().optional(),
+    brandStoreUrl: z.string().nullable().optional(),
+    images: z.array(z.string()).nullable().optional(),
+    aPlusDocumentArray: z
+      .array(
+        z
+          .object({
+            asin: z.string().nullable().optional(),
+            moduleList: z
+              .array(
+                z
+                  .object({
+                    moduleType: z.string().nullable().optional(),
+                    headline: z.string().nullable().optional(),
+                    body: z.string().nullable().optional(),
+                    imageList: z
+                      .array(
+                        z
+                          .object({ url: z.string().nullable().optional() })
+                          .passthrough()
+                      )
+                      .nullable()
+                      .optional(),
+                  })
+                  .passthrough()
+              )
+              .nullable()
+              .optional(),
+          })
+          .passthrough()
+      )
+      .nullable()
+      .optional(),
+    videos: z
+      .array(
+        z
+          .object({
+            title: z.string().nullable().optional(),
+            url: z.string().nullable().optional(),
+            durationSeconds: z.number().nullable().optional(),
+            thumbnailUrl: z.string().nullable().optional(),
+            creator: z.string().nullable().optional(),
+          })
+          .passthrough()
+      )
       .nullable()
       .optional(),
   })

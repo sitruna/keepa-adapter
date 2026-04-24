@@ -1,9 +1,21 @@
 import { ADAPTER_VERSION, SOURCE, CSV_TYPE, KEEPA_DOMAINS } from "../constants.js";
-import type { UniversalEnvelope, ProductSnapshot, SubcategoryRank } from "../schema/universal.js";
+import type { UniversalEnvelope, ProductSnapshot, SubcategoryRank, Offer, APlusModule, Video } from "../schema/universal.js";
 import type { TokenMeta } from "./client.js";
 import type { KeepaProduct } from "../schema/keepa.js";
 import { getLatestCsvValue, decodeCsvTimeSeries, decodeCouponTimeSeries } from "./keepa-csv.js";
 import { dateToKeepaTime, keepaTimeToISO } from "./keepa-time.js";
+
+const DOMAIN_CURRENCY: Record<string, string> = {
+  com: "USD", uk: "GBP", de: "EUR", fr: "EUR", jp: "JPY",
+  ca: "CAD", cn: "CNY", it: "EUR", es: "EUR", in: "INR",
+  mx: "MXN", br: "BRL", au: "AUD",
+};
+
+const DOMAIN_COUNTRY: Record<string, string> = {
+  com: "US", uk: "GB", de: "DE", fr: "FR", jp: "JP",
+  ca: "CA", cn: "CN", it: "IT", es: "ES", in: "IN",
+  mx: "MX", br: "BR", au: "AU",
+};
 
 // --- Envelope builders ---
 
@@ -97,6 +109,91 @@ function getPriceWithFallbacks(
   return null;
 }
 
+function getOfferPrice(offerCSV: number[] | null | undefined): { price: number | null; shipping: number | null } {
+  if (!offerCSV || offerCSV.length < 2) return { price: null, shipping: null };
+  // Keepa offerCSV is pairs [keepaTime, priceInCents, ...]
+  const priceRaw = offerCSV[offerCSV.length - 1];
+  return {
+    price: normaliseSentinel(priceRaw) != null ? priceRaw / 100 : null,
+    shipping: null,
+  };
+}
+
+function normaliseOffers(
+  raw: KeepaProduct,
+  domainStr: string
+): Offer[] {
+  const offersArr = raw.offers ?? [];
+  const currency = DOMAIN_CURRENCY[domainStr] ?? null;
+  const country = DOMAIN_COUNTRY[domainStr] ?? null;
+  return offersArr.map((o) => {
+    let price: number | null = null;
+    let shipping: number | null = null;
+    if (o.price != null && normaliseSentinel(o.price) != null) {
+      price = o.price / 100;
+      shipping = o.shipping != null && normaliseSentinel(o.shipping) != null ? o.shipping / 100 : null;
+    } else {
+      const decoded = getOfferPrice(o.offerCSV);
+      price = decoded.price;
+      shipping = decoded.shipping;
+    }
+    return {
+      seller_id: o.sellerId ?? null,
+      condition: o.condition ?? null,
+      is_fba: o.isFBA ?? null,
+      is_fbm: o.isFBA != null ? !o.isFBA : null,
+      is_prime: o.isPrime ?? null,
+      price,
+      shipping,
+      currency,
+      country,
+      is_buy_box_winner: o.isBuyBoxWinner ?? null,
+      last_seen: o.lastSeen != null ? keepaTimeToISO(o.lastSeen) : null,
+    };
+  });
+}
+
+function normaliseAplus(raw: KeepaProduct): { content: APlusModule[]; brandStory: APlusModule[] | null } {
+  const docs = raw.aPlusDocumentArray ?? [];
+  const allModules: APlusModule[] = [];
+
+  for (const doc of docs) {
+    const moduleList = doc.moduleList ?? (doc as Record<string, unknown>).modules as typeof doc.moduleList ?? [];
+    for (const mod of moduleList ?? []) {
+      const isBrandStory = typeof mod.moduleType === "string"
+        ? mod.moduleType.startsWith("BRAND_STORY_")
+        : false;
+      const images = (mod.imageList ?? [])
+        .map((img) => img.url)
+        .filter((u): u is string => u != null && u !== "");
+      allModules.push({
+        module_type: mod.moduleType ?? null,
+        heading: mod.headline ?? null,
+        body: mod.body ?? null,
+        images,
+        is_brand_story: isBrandStory,
+      });
+    }
+  }
+
+  const nonBrandStory = allModules.filter((m) => !m.is_brand_story);
+  const brandStoryMods = allModules.filter((m) => m.is_brand_story);
+  return {
+    content: nonBrandStory,
+    brandStory: brandStoryMods.length > 0 ? brandStoryMods : null,
+  };
+}
+
+function normaliseVideos(raw: KeepaProduct): Video[] {
+  return (raw.videos ?? []).map((v) => ({
+    title: v.title ?? null,
+    url: v.url ?? null,
+    duration_seconds: v.durationSeconds ?? null,
+    thumbnail_url: v.thumbnailUrl ?? null,
+    creator: v.creator ?? null,
+  }));
+}
+
 export function transformProductSnapshot(
   raw: KeepaProduct,
   domain?: string
@@ -105,10 +202,17 @@ export function transformProductSnapshot(
   const statsCurrent = raw.stats?.current;
   const domainStr = domain ?? domainName(raw.domainId);
 
-  // Parse images from imagesCSV (comma-separated filenames)
-  const images: string[] = raw.imagesCSV
-    ? raw.imagesCSV.split(",").filter(Boolean)
-    : [];
+  // Image fallback chain: imagesCSV → images[] → variations[].image
+  let images: string[];
+  if (raw.imagesCSV) {
+    images = raw.imagesCSV.split(",").filter(Boolean);
+  } else if (raw.images?.length) {
+    images = raw.images.filter((img): img is string => img != null && img !== "");
+  } else {
+    images = (raw.variations ?? [])
+      .map((v) => v.image)
+      .filter((img): img is string => img != null && img !== "");
+  }
 
   // Parse variation attributes from the `variations` array (structured data)
   // variationCSV is just a list of variation ASINs, not key-value pairs
@@ -173,14 +277,22 @@ export function transformProductSnapshot(
     ? buyBoxHistory[buyBoxHistory.length - 1] ?? null
     : null;
 
+  const offersArr = raw.offers ?? [];
+  const offer_count_fba = offersArr.length > 0
+    ? offersArr.filter((o) => o.isFBA === true).length
+    : normaliseSentinel(raw.stats?.offerCountFBA);
+  const offer_count_fbm = offersArr.length > 0
+    ? offersArr.filter((o) => o.isFBA === false).length
+    : normaliseSentinel(raw.stats?.offerCountFBM);
+
+  const aplus = normaliseAplus(raw);
+
   return {
     asin: raw.asin,
     domain: domainStr,
     title: raw.title ?? null,
     brand: raw.brand ?? null,
     amazon_price: getValueWithFallback(csv, statsCurrent, CSV_TYPE.AMAZON, { isPriceCents: true }),
-    // For FBM-only listings Keepa sometimes leaves csv[NEW] empty and only
-    // populates csv[NEW_FBM_SHIPPING] / csv[NEW_FBA]. Fall through in that order.
     new_price: getPriceWithFallbacks(csv, statsCurrent, [
       CSV_TYPE.NEW,
       CSV_TYPE.NEW_FBM_SHIPPING,
@@ -195,8 +307,6 @@ export function transformProductSnapshot(
     review_count: getValueWithFallback(csv, statsCurrent, CSV_TYPE.COUNT_REVIEWS),
     buy_box_seller_id: buyBoxSellerId,
     buy_box_is_amazon: buyBoxSellerId === "ATVPDKIKX0DER" ? true : buyBoxSellerId ? false : null,
-    // Buy box falls back to the cheapest new offer (FBM shipping-inclusive,
-    // then FBA) so FBM-only listings still surface a price here.
     buy_box_price: getPriceWithFallbacks(csv, statsCurrent, [
       CSV_TYPE.BUY_BOX_SHIPPING,
       CSV_TYPE.NEW_FBM_SHIPPING,
@@ -212,15 +322,19 @@ export function transformProductSnapshot(
     list_price: getValueWithFallback(csv, statsCurrent, CSV_TYPE.LIST_PRICE, { isPriceCents: true }),
     offer_count_new: getValueWithFallback(csv, statsCurrent, CSV_TYPE.COUNT_NEW),
     offer_count_used: getValueWithFallback(csv, statsCurrent, CSV_TYPE.COUNT_USED),
-    // Keepa returns -1 / -2 when FBA/FBM offer tracking is absent for a
-    // product (common on FBM-only UK listings). Surface those as null rather
-    // than leaking the sentinel into the MCP response.
-    offer_count_fba: normaliseSentinel(raw.stats?.offerCountFBA),
-    offer_count_fbm: normaliseSentinel(raw.stats?.offerCountFBM),
+    offer_count_fba,
+    offer_count_fbm,
     out_of_stock_percentage_30: normaliseSentinel(raw.stats?.outOfStockPercentage30?.[0]),
     out_of_stock_percentage_90: normaliseSentinel(raw.stats?.outOfStockPercentage90?.[0]),
     is_sns: raw.isSNS ?? null,
     frequently_bought_together: raw.frequentlyBoughtTogether ?? [],
+    brand_store_name: raw.brandStoreName ?? null,
+    brand_store_url_name: raw.brandStoreUrlName ?? null,
+    brand_store_url: raw.brandStoreUrl ?? null,
+    offers: normaliseOffers(raw, domainStr),
+    aplus_content: aplus.content,
+    brand_story: aplus.brandStory,
+    videos: normaliseVideos(raw),
   };
 }
 

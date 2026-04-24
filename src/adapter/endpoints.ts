@@ -21,6 +21,8 @@ export async function getProduct(
     offers?: number;
     rating?: boolean;
     buybox?: boolean;
+    aplus?: boolean;
+    videos?: boolean;
   }
 ) {
   const params: Record<string, string | number | boolean | undefined> = {
@@ -32,6 +34,8 @@ export async function getProduct(
   if (opts.offers != null) params.offers = opts.offers;
   if (opts.rating) params.rating = 1;
   if (opts.buybox) params.buybox = 1;
+  if (opts.aplus) params.aplus = 1;
+  if (opts.videos) params.videos = 1;
 
   return client.get("/product", KeepaProductResponseSchema, params);
 }

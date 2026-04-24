@@ -42,6 +42,48 @@ export const UniversalEnvelopeSchema = z.object({
 
 export type UniversalEnvelope = z.infer<typeof UniversalEnvelopeSchema>;
 
+// --- Offer ---
+
+export const OfferSchema = z.object({
+  seller_id: z.string().nullable(),
+  condition: z.number().nullable(),
+  is_fba: z.boolean().nullable(),
+  is_fbm: z.boolean().nullable(),
+  is_prime: z.boolean().nullable(),
+  price: z.number().nullable(),
+  shipping: z.number().nullable(),
+  currency: z.string().nullable(),
+  country: z.string().nullable(),
+  is_buy_box_winner: z.boolean().nullable(),
+  last_seen: z.string().nullable(),
+});
+
+export type Offer = z.infer<typeof OfferSchema>;
+
+// --- A+ Module ---
+
+export const APlusModuleSchema = z.object({
+  module_type: z.string().nullable(),
+  heading: z.string().nullable(),
+  body: z.string().nullable(),
+  images: z.array(z.string()),
+  is_brand_story: z.boolean(),
+});
+
+export type APlusModule = z.infer<typeof APlusModuleSchema>;
+
+// --- Video ---
+
+export const VideoSchema = z.object({
+  title: z.string().nullable(),
+  url: z.string().nullable(),
+  duration_seconds: z.number().nullable(),
+  thumbnail_url: z.string().nullable(),
+  creator: z.string().nullable(),
+});
+
+export type Video = z.infer<typeof VideoSchema>;
+
 // --- Subcategory Rank ---
 
 export const SubcategoryRankSchema = z.object({
@@ -85,6 +127,13 @@ export const ProductSnapshotSchema = z.object({
   out_of_stock_percentage_90: z.number().nullable(),
   is_sns: z.boolean().nullable(),
   frequently_bought_together: z.array(z.string()),
+  brand_store_name: z.string().nullable(),
+  brand_store_url_name: z.string().nullable(),
+  brand_store_url: z.string().nullable(),
+  offers: z.array(OfferSchema),
+  aplus_content: z.array(APlusModuleSchema),
+  brand_story: z.array(APlusModuleSchema).nullable(),
+  videos: z.array(VideoSchema),
 });
 
 export type ProductSnapshot = z.infer<typeof ProductSnapshotSchema>;

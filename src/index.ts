@@ -89,6 +89,9 @@ server.tool(
         stats: stats_days ?? 30,
         rating: true,
         buybox: true,
+        offers: 20,
+        aplus: true,
+        videos: true,
       });
           // Strip out_of_stock_percentage_* from MCP output. Fields are still
       // populated internally for storage and change-detection use.
