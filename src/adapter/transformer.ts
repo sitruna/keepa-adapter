@@ -154,22 +154,24 @@ function normaliseOffers(
 }
 
 function normaliseAplus(raw: KeepaProduct): { content: APlusModule[]; brandStory: APlusModule[] | null } {
-  const docs = raw.aPlusDocumentArray ?? [];
+  // Keepa returns A+ content under the 'aPlus' key (not 'aPlusDocumentArray').
+  // Each doc has a 'module' array; each module has 'image' (full URLs) and optional text fields.
+  // Keepa's format does not expose moduleType so brand story detection is not possible.
+  const docs = raw.aPlus ?? [];
   const allModules: APlusModule[] = [];
 
   for (const doc of docs) {
-    const moduleList = doc.moduleList ?? (doc as Record<string, unknown>).modules as typeof doc.moduleList ?? [];
-    for (const mod of moduleList ?? []) {
-      const isBrandStory = typeof mod.moduleType === "string"
-        ? mod.moduleType.startsWith("BRAND_STORY_")
-        : false;
-      const images = (mod.imageList ?? [])
-        .map((img) => img.url)
-        .filter((u): u is string => u != null && u !== "");
+    const moduleList = doc.module ?? [];
+    for (const mod of moduleList) {
+      const m = mod as Record<string, unknown>;
+      const moduleType = typeof m.moduleType === "string" ? m.moduleType : null;
+      const isBrandStory = moduleType != null && moduleType.startsWith("BRAND_STORY_");
+      const images = (Array.isArray(m.image) ? m.image : [])
+        .filter((u): u is string => typeof u === "string" && u !== "");
       allModules.push({
-        module_type: mod.moduleType ?? null,
-        heading: mod.headline ?? null,
-        body: mod.body ?? null,
+        module_type: moduleType,
+        heading: typeof m.headline === "string" ? m.headline : null,
+        body: typeof m.body === "string" ? m.body : null,
         images,
         is_brand_story: isBrandStory,
       });
@@ -184,19 +186,23 @@ function normaliseAplus(raw: KeepaProduct): { content: APlusModule[]; brandStory
   };
 }
 
-function extractImageId(img: unknown): string | null {
+function extractImageFilename(img: unknown): string | null {
   if (typeof img === "string") return img || null;
   if (img && typeof img === "object") {
     const o = img as Record<string, unknown>;
-    // Try known field names first
-    const candidate = o.path ?? o.url ?? o.imageUrl ?? o.src ?? o.href ?? o.value ?? o.image ?? o.asin_image;
+    // Keepa image objects use 'l' (large) and 'm' (medium) for the filename
+    const candidate = o.l ?? o.m ?? o.path ?? o.url ?? o.imageUrl ?? o.src ?? o.href ?? o.value ?? o.image ?? o.asin_image;
     if (typeof candidate === "string" && candidate) return candidate;
-    // Fall back to first non-empty string value in the object
     for (const v of Object.values(o)) {
       if (typeof v === "string" && v) return v;
     }
   }
   return null;
+}
+
+function toImageUrl(filenameOrUrl: string): string {
+  if (filenameOrUrl.startsWith("http")) return filenameOrUrl;
+  return `https://m.media-amazon.com/images/I/${filenameOrUrl}`;
 }
 
 function normaliseVideos(raw: KeepaProduct): Video[] {
@@ -218,17 +224,21 @@ export function transformProductSnapshot(
   const domainStr = domain ?? domainName(raw.domainId);
 
   // Image fallback chain: imagesCSV → images[] → variations[].image
-  // Keepa's images[] field returns objects (not strings), so we extract
-  // the path/url sub-field via extractImageId.
+  // Keepa returns images[] as objects with 'l'/'m' filename keys (not full URLs).
+  // All paths normalise to full https://m.media-amazon.com/images/I/<file> URLs.
   let images: string[];
   if (raw.imagesCSV) {
-    images = raw.imagesCSV.split(",").filter(Boolean);
+    images = raw.imagesCSV.split(",").filter(Boolean).map(toImageUrl);
   } else if (raw.images?.length) {
-    images = raw.images.map(extractImageId).filter((s): s is string => s != null);
+    images = raw.images
+      .map(extractImageFilename)
+      .filter((s): s is string => s != null)
+      .map(toImageUrl);
   } else {
     images = (raw.variations ?? [])
       .map((v) => v.image)
-      .filter((img): img is string => img != null && img !== "");
+      .filter((img): img is string => img != null && img !== "")
+      .map(toImageUrl);
   }
 
   // Parse variation attributes from the `variations` array (structured data)

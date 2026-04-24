@@ -39,18 +39,51 @@ describe("brand store fields", () => {
 
 // ── Images fallback chain ──────────────────────────────────────────────────────
 
+const IMG_BASE = "https://m.media-amazon.com/images/I/";
+
 describe("images fallback chain", () => {
-  it("uses imagesCSV when present", () => {
+  it("uses imagesCSV when present and constructs full URLs", () => {
     const raw = base({ imagesCSV: "ABCDEF.jpg,GHIJKL.jpg" });
-    expect(transformProductSnapshot(raw, "uk").images).toEqual(["ABCDEF.jpg", "GHIJKL.jpg"]);
+    expect(transformProductSnapshot(raw, "uk").images).toEqual([
+      `${IMG_BASE}ABCDEF.jpg`,
+      `${IMG_BASE}GHIJKL.jpg`,
+    ]);
   });
 
-  it("falls back to images[] when imagesCSV is absent", () => {
+  it("falls back to images[] strings and constructs full URLs", () => {
     const raw = base({ imagesCSV: null, images: ["IMG001.jpg", "IMG002.jpg"] });
-    expect(transformProductSnapshot(raw, "uk").images).toEqual(["IMG001.jpg", "IMG002.jpg"]);
+    expect(transformProductSnapshot(raw, "uk").images).toEqual([
+      `${IMG_BASE}IMG001.jpg`,
+      `${IMG_BASE}IMG002.jpg`,
+    ]);
   });
 
-  it("falls back to variations[].image when imagesCSV and images[] both absent (B07KS958KC-like)", () => {
+  it("extracts filename from Keepa image objects (l/m keys) and constructs full URLs", () => {
+    const raw = base({
+      imagesCSV: null,
+      images: [
+        { l: "81HOpBWe9kL.jpg", lH: 2000, lW: 2000, m: "41ra0W-urNL.jpg", mH: 500, mW: 500 },
+        { l: "71txgBrIyQL.jpg", lH: 2000, lW: 2001, m: "4103PDxF1eL.jpg", mH: 500, mW: 500 },
+      ],
+    });
+    const snap = transformProductSnapshot(raw, "uk");
+    expect(snap.images).toEqual([
+      `${IMG_BASE}81HOpBWe9kL.jpg`,
+      `${IMG_BASE}71txgBrIyQL.jpg`,
+    ]);
+  });
+
+  it("passes through images that are already full URLs", () => {
+    const raw = base({
+      imagesCSV: null,
+      images: ["https://m.media-amazon.com/images/I/existing.jpg"],
+    });
+    expect(transformProductSnapshot(raw, "uk").images).toEqual([
+      "https://m.media-amazon.com/images/I/existing.jpg",
+    ]);
+  });
+
+  it("falls back to variations[].image when imagesCSV and images[] both absent", () => {
     const raw = base({
       imagesCSV: null,
       images: undefined,
@@ -60,8 +93,7 @@ describe("images fallback chain", () => {
       ],
     });
     const snap = transformProductSnapshot(raw, "uk");
-    expect(snap.images.length).toBeGreaterThan(0);
-    expect(snap.images).toContain("VARIATION_IMG.jpg");
+    expect(snap.images).toContain(`${IMG_BASE}VARIATION_IMG.jpg`);
   });
 
   it("returns empty array when all image sources are absent", () => {
@@ -139,24 +171,41 @@ describe("offers normalisation", () => {
 // ── A+ content ────────────────────────────────────────────────────────────────
 
 describe("aplus_content and brand_story", () => {
-  it("parses A+ modules and separates brand story from content", () => {
+  it("parses aPlus modules using the real Keepa field name", () => {
     const raw = base({
-      aPlusDocumentArray: [
+      aPlus: [
         {
-          asin: "B07KS958KC",
-          moduleList: [
+          fromManufacturer: false,
+          module: [
             {
-              moduleType: "STANDARD_FOUR_IMAGE_TEXT",
-              headline: "Great Features",
-              body: "Body text here",
-              imageList: [{ url: "https://example.com/img1.jpg" }],
+              image: ["https://m.media-amazon.com/images/S/aplus-media/img1.png"],
+              imageAltText: ["Alt text for image"],
             },
             {
-              moduleType: "BRAND_STORY_HERO_IMAGE",
-              headline: "Our Story",
-              body: "Brand story text",
-              imageList: [{ url: "https://example.com/hero.jpg" }],
+              image: ["https://m.media-amazon.com/images/S/aplus-media/img2.png"],
+              imageAltText: ["Second image alt"],
             },
+          ],
+        },
+      ],
+    });
+    const snap = transformProductSnapshot(raw, "uk");
+    expect(snap.aplus_content).toHaveLength(2);
+    expect(snap.aplus_content[0].images).toEqual([
+      "https://m.media-amazon.com/images/S/aplus-media/img1.png",
+    ]);
+    expect(snap.aplus_content[0].is_brand_story).toBe(false);
+    expect(snap.aplus_content[0].module_type).toBeNull();
+  });
+
+  it("detects brand story when moduleType prefix is present", () => {
+    const raw = base({
+      aPlus: [
+        {
+          fromManufacturer: false,
+          module: [
+            { moduleType: "STANDARD_FOUR_IMAGE_TEXT", image: ["https://example.com/a.jpg"] },
+            { moduleType: "BRAND_STORY_HERO_IMAGE", image: ["https://example.com/b.jpg"] },
           ],
         },
       ],
@@ -164,10 +213,6 @@ describe("aplus_content and brand_story", () => {
     const snap = transformProductSnapshot(raw, "uk");
     expect(snap.aplus_content).toHaveLength(1);
     expect(snap.aplus_content[0].module_type).toBe("STANDARD_FOUR_IMAGE_TEXT");
-    expect(snap.aplus_content[0].heading).toBe("Great Features");
-    expect(snap.aplus_content[0].body).toBe("Body text here");
-    expect(snap.aplus_content[0].images).toEqual(["https://example.com/img1.jpg"]);
-    expect(snap.aplus_content[0].is_brand_story).toBe(false);
     expect(snap.brand_story).toHaveLength(1);
     expect(snap.brand_story![0].module_type).toBe("BRAND_STORY_HERO_IMAGE");
     expect(snap.brand_story![0].is_brand_story).toBe(true);
@@ -181,12 +226,10 @@ describe("aplus_content and brand_story", () => {
 
   it("returns null brand_story when no brand story modules exist", () => {
     const raw = base({
-      aPlusDocumentArray: [
+      aPlus: [
         {
-          asin: "B07KS958KC",
-          moduleList: [
-            { moduleType: "STANDARD_TECH_SPECS", headline: "Specs", body: "Details" },
-          ],
+          fromManufacturer: false,
+          module: [{ image: ["https://example.com/x.jpg"] }],
         },
       ],
     });

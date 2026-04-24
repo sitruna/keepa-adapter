@@ -161,6 +161,30 @@ export const KeepaProductSchema = z
     brandStoreUrlName: z.string().nullable().optional(),
     brandStoreUrl: z.string().nullable().optional(),
     images: z.array(z.union([z.string(), z.object({}).passthrough()])).nullable().optional(),
+    aPlus: z
+      .array(
+        z
+          .object({
+            fromManufacturer: z.boolean().optional(),
+            module: z
+              .array(
+                z
+                  .object({
+                    image: z.array(z.string()).optional(),
+                    imageAltText: z.array(z.string()).optional(),
+                    headline: z.string().nullable().optional(),
+                    body: z.string().nullable().optional(),
+                    moduleType: z.string().nullable().optional(),
+                  })
+                  .passthrough()
+              )
+              .nullable()
+              .optional(),
+          })
+          .passthrough()
+      )
+      .nullable()
+      .optional(),
     aPlusDocumentArray: z
       .array(
         z
