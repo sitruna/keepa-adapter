@@ -203,11 +203,22 @@ export function transformProductSnapshot(
   const domainStr = domain ?? domainName(raw.domainId);
 
   // Image fallback chain: imagesCSV → images[] → variations[].image
+  // raw.images items may be strings (test data) or Keepa image objects with hiRes/lowRes fields.
+  function extractImageUrl(img: unknown): string | null {
+    if (typeof img === "string") return img || null;
+    if (img && typeof img === "object") {
+      const o = img as Record<string, unknown>;
+      for (const key of ["hiRes", "lowRes", "url"]) {
+        if (typeof o[key] === "string" && o[key]) return o[key] as string;
+      }
+    }
+    return null;
+  }
   let images: string[];
   if (raw.imagesCSV) {
     images = raw.imagesCSV.split(",").filter(Boolean);
   } else if (raw.images?.length) {
-    images = raw.images.filter((img): img is string => img != null && img !== "");
+    images = raw.images.map(extractImageUrl).filter((u): u is string => u != null);
   } else {
     images = (raw.variations ?? [])
       .map((v) => v.image)
