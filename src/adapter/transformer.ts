@@ -188,8 +188,13 @@ function extractImageId(img: unknown): string | null {
   if (typeof img === "string") return img || null;
   if (img && typeof img === "object") {
     const o = img as Record<string, unknown>;
-    const candidate = o.path ?? o.url ?? o.imageUrl ?? o.src;
-    return typeof candidate === "string" ? candidate || null : null;
+    // Try known field names first
+    const candidate = o.path ?? o.url ?? o.imageUrl ?? o.src ?? o.href ?? o.value ?? o.image ?? o.asin_image;
+    if (typeof candidate === "string" && candidate) return candidate;
+    // Fall back to first non-empty string value in the object
+    for (const v of Object.values(o)) {
+      if (typeof v === "string" && v) return v;
+    }
   }
   return null;
 }
