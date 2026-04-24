@@ -160,7 +160,7 @@ export const KeepaProductSchema = z
     brandStoreName: z.string().nullable().optional(),
     brandStoreUrlName: z.string().nullable().optional(),
     brandStoreUrl: z.string().nullable().optional(),
-    images: z.array(z.string()).nullable().optional(),
+    images: z.array(z.union([z.string(), z.object({}).passthrough()])).nullable().optional(),
     aPlusDocumentArray: z
       .array(
         z

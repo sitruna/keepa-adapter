@@ -184,6 +184,16 @@ function normaliseAplus(raw: KeepaProduct): { content: APlusModule[]; brandStory
   };
 }
 
+function extractImageId(img: unknown): string | null {
+  if (typeof img === "string") return img || null;
+  if (img && typeof img === "object") {
+    const o = img as Record<string, unknown>;
+    const candidate = o.path ?? o.url ?? o.imageUrl ?? o.src;
+    return typeof candidate === "string" ? candidate || null : null;
+  }
+  return null;
+}
+
 function normaliseVideos(raw: KeepaProduct): Video[] {
   return (raw.videos ?? []).map((v) => ({
     title: v.title ?? null,
@@ -203,11 +213,13 @@ export function transformProductSnapshot(
   const domainStr = domain ?? domainName(raw.domainId);
 
   // Image fallback chain: imagesCSV → images[] → variations[].image
+  // Keepa's images[] field returns objects (not strings), so we extract
+  // the path/url sub-field via extractImageId.
   let images: string[];
   if (raw.imagesCSV) {
     images = raw.imagesCSV.split(",").filter(Boolean);
   } else if (raw.images?.length) {
-    images = raw.images.filter((img): img is string => img != null && img !== "");
+    images = raw.images.map(extractImageId).filter((s): s is string => s != null);
   } else {
     images = (raw.variations ?? [])
       .map((v) => v.image)
