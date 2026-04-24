@@ -1,6 +1,6 @@
 {
   "name": "keepa-adapter",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "SkillCrate adapter: MCP server + OpenClaw skill for Keepa Amazon product monitoring",
   "type": "module",
   "bin": {

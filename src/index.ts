@@ -27,7 +27,16 @@ import { checkVariationChanges } from "./analysis/variation-monitor.js";
 import { analyzePromoImpact } from "./analysis/promo-correlation.js";
 
 const client = new KeepaClient();
-const db = initDb();
+
+let db: ReturnType<typeof initDb> | null = null;
+let storageAvailable = false;
+try {
+  db = initDb();
+  storageAvailable = true;
+} catch (err) {
+  console.error("[keepa-adapter] Storage init failed — monitoring tools disabled:", err);
+}
+
 const server = new McpServer({
   name: "keepa-adapter",
   version: "1.0.0",
@@ -45,6 +54,17 @@ function errorResult(err: unknown) {
           "adapter_error",
           err instanceof Error ? err.message : "Unknown error"
         );
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(envelope, null, 2) }],
+    isError: true,
+  };
+}
+
+function storageUnavailableResult() {
+  const envelope = toErrorEnvelope(
+    "storage_unavailable",
+    "Storage unavailable on this deployment. This tool requires a persistent volume mounted at /data on Railway."
+  );
   return {
     content: [{ type: "text" as const, text: JSON.stringify(envelope, null, 2) }],
     isError: true,
@@ -302,6 +322,7 @@ server.tool(
     priority: z.enum(["critical", "standard", "weekly"]).optional().describe("Monitoring priority (default: standard)"),
   },
   async ({ asins, domain, label, priority }) => {
+    if (!storageAvailable || !db) return storageUnavailableResult();
     try {
       for (const asin of asins) {
         addTrackedAsin(db, {
@@ -333,6 +354,7 @@ server.tool(
     domain: z.string().optional().describe("Amazon domain (default: com)"),
   },
   async ({ asins, domain }) => {
+    if (!storageAvailable || !db) return storageUnavailableResult();
     try {
       const domainStr = domain ?? DEFAULT_DOMAIN;
       const targetAsins = asins?.length
@@ -401,6 +423,7 @@ server.tool(
     domain: z.string().optional().describe("Amazon domain (default: com)"),
   },
   async ({ asins, days, severity, domain }) => {
+    if (!storageAvailable || !db) return storageUnavailableResult();
     try {
       const changes = getRecentChanges(db, {
         asins: asins ?? undefined,
@@ -426,10 +449,11 @@ server.tool(
     domain: z.string().optional().describe("Amazon domain (default: com)"),
   },
   async ({ asins, period_days, domain }) => {
+    if (!storageAvailable || !db) return storageUnavailableResult();
     try {
       const domainStr = domain ?? DEFAULT_DOMAIN;
       const trends = asins.map((asin) => {
-        const snapshots = getSnapshotHistory(db, asin, domainStr, period_days ?? 10);
+        const snapshots = getSnapshotHistory(db!, asin, domainStr, period_days ?? 10);
         return analyzeBsrTrend(snapshots, asin, { periodDays: period_days });
       });
       const envelope = toUniversalEnvelope("bsr_trend", trends);
@@ -449,6 +473,7 @@ server.tool(
     domain: z.string().optional().describe("Amazon domain (default: com)"),
   },
   async ({ asins, domain }) => {
+    if (!storageAvailable || !db) return storageUnavailableResult();
     try {
       const domainStr = domain ?? DEFAULT_DOMAIN;
       const res = await getProduct(client, {
@@ -495,6 +520,7 @@ server.tool(
     domain: z.string().optional().describe("Amazon domain (default: com)"),
   },
   async ({ asin, promo_type, start_date, end_date, notes, domain }) => {
+    if (!storageAvailable || !db) return storageUnavailableResult();
     try {
       const id = insertPromo(db, {
         asin,
@@ -522,6 +548,7 @@ server.tool(
     domain: z.string().optional().describe("Amazon domain (default: com)"),
   },
   async ({ asin, active_only, domain }) => {
+    if (!storageAvailable || !db) return storageUnavailableResult();
     try {
       const promos = listPromos(db, {
         asin: asin ?? undefined,
@@ -548,6 +575,7 @@ server.tool(
     domain: z.string().optional().describe("Amazon domain (default: com)"),
   },
   async ({ promo_id, asin, start_date, end_date, domain }) => {
+    if (!storageAvailable || !db) return storageUnavailableResult();
     try {
       let impact;
       if (promo_id) {
