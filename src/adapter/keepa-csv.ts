@@ -8,8 +8,12 @@ export interface TimeSeriesPoint {
 // Keepa sentinels: -1 = never tracked, -2 = out of stock / no offer / not collected.
 // Both indicate "no valid value" and should surface as null rather than leaking
 // into the output (e.g. -2 cents becoming -0.02).
-function isSentinel(value: number): boolean {
-  return value === -1 || value === -2;
+// For price fields, 0 is an additional sentinel meaning "price not tracked for this
+// interval" (distinct from a genuine £0.00 which never occurs on Amazon).
+function isSentinel(value: number, isPriceCents?: boolean): boolean {
+  if (value === -1 || value === -2) return true;
+  if (isPriceCents && value === 0) return true;
+  return false;
 }
 
 /**
@@ -31,7 +35,7 @@ export function decodeCsvTimeSeries(
     const keepaTime = csv[i];
     const rawValue = csv[i + 1];
 
-    const value = isSentinel(rawValue)
+    const value = isSentinel(rawValue, isPriceCents)
       ? null
       : isPriceCents
         ? rawValue / 100
@@ -102,6 +106,6 @@ export function getLatestCsvValue(
 ): number | null {
   if (!csv || csv.length < 2) return null;
   const rawValue = csv[csv.length - 1];
-  if (isSentinel(rawValue)) return null;
+  if (isSentinel(rawValue, opts?.isPriceCents)) return null;
   return opts?.isPriceCents ? rawValue / 100 : rawValue;
 }

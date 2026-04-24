@@ -281,6 +281,25 @@ describe("transformer", () => {
       expect(snapshot.amazon_price).toBeNull();
     });
 
+    it("returns null buy_box_price when csv[BUY_BOX_SHIPPING] is 0 and falls back to NEW_FBM_SHIPPING", () => {
+      // Reproduces B07KS958KC (UK mattress) and B07DCYQCPX (UK notebook):
+      // buy_box_seller_id is populated but csv[BUY_BOX_SHIPPING] = 0 (Keepa
+      // sentinel for "buy box price not tracked for this interval"). The adapter
+      // previously returned 0 (0 / 100 = £0.00). With the fix it falls through
+      // to csv[NEW_FBM_SHIPPING] and surfaces the real price.
+      const csv: (number[] | null)[] = new Array(19).fill(null);
+      csv[7]  = [0, 5699];  // NEW_FBM_SHIPPING = £56.99
+      csv[18] = [0, 0];     // BUY_BOX_SHIPPING = 0 (not tracked)
+      const raw = makeRawProduct({
+        csv,
+        buyBoxSellerIdHistory: ["A10F19JPVHNE80"],
+        stats: { current: [], offerCountFBA: -2, offerCountFBM: -2 },
+      });
+      const snapshot = transformProductSnapshot(raw, "uk");
+      expect(snapshot.buy_box_price).toBe(56.99);
+      expect(snapshot.buy_box_seller_id).toBe("A10F19JPVHNE80");
+    });
+
     it("returns empty array for null frequentlyBoughtTogether", () => {
       const raw = makeRawProduct({ frequentlyBoughtTogether: null });
       const snapshot = transformProductSnapshot(raw, "com");

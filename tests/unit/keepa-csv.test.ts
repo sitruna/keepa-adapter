@@ -37,6 +37,13 @@ describe("keepa-csv", () => {
       expect(result[1].value).toBe(24.99);
     });
 
+    it("converts 0 price to null (buy box not tracked sentinel) in price time series", () => {
+      const csv = [0, 0, 60, 5699];
+      const result = decodeCsvTimeSeries(csv, { isPriceCents: true });
+      expect(result[0].value).toBeNull();
+      expect(result[1].value).toBe(56.99);
+    });
+
     it("converts cents to dollars when isPriceCents is true", () => {
       const csv = [0, 1999, 60, 2499];
       const result = decodeCsvTimeSeries(csv, { isPriceCents: true });
@@ -115,6 +122,16 @@ describe("keepa-csv", () => {
     it("returns null if last value is -2 (OOS sentinel)", () => {
       const csv = [0, 1000, 60, -2];
       expect(getLatestCsvValue(csv, { isPriceCents: true })).toBeNull();
+    });
+
+    it("returns null if last price value is 0 (buy box price not tracked sentinel)", () => {
+      const csv = [0, 5699, 60, 0];
+      expect(getLatestCsvValue(csv, { isPriceCents: true })).toBeNull();
+    });
+
+    it("does NOT treat 0 as sentinel for non-price fields", () => {
+      const csv = [0, 5, 60, 0];
+      expect(getLatestCsvValue(csv)).toBe(0);
     });
 
     it("converts cents to dollars", () => {
